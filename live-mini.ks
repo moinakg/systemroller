@@ -75,6 +75,32 @@ net-tools
 cp scripts/dhclient-up-hooks ${INSTALL_ROOT}/etc/dhcp
 chmod +x ${INSTALL_ROOT}/etc/dhcp/dhclient-up-hooks
 
+mkdir ${INSTALL_ROOT}/rbin
+cp scripts/rbash.setup ${INSTALL_ROOT}/bin/rbash.setup
+chmod a+x ${INSTALL_ROOT}/bin/rbash.setup
+
+cat >${INSTALL_ROOT}/rbin/.lessk <<EOF
+M+Gc	v!|evxEnd
+EOF
+
+for prog in `ls scripts/rbin`
+do
+	cp scripts/rbin/${prog} ${INSTALL_ROOT}/rbin/${prog}
+	chmod a+x ${INSTALL_ROOT}/rbin/${prog}
+done
+
+for lnk in `cat symlinks.lst`
+do
+	_IFS=$IFS
+	IFS=","
+	set -- $lnk
+	IFS=$_IFS
+
+	l=$1
+	t=$2
+	ln -s $t ${INSTALL_ROOT}/$l
+done
+
 # only works on x86, x86_64
 if [ "$(uname -i)" = "i386" -o "$(uname -i)" = "x86_64" ]; then
   if [ ! -d $LIVE_ROOT/LiveOS ]; then mkdir -p $LIVE_ROOT/LiveOS ; fi
@@ -88,8 +114,6 @@ cat << __EOF > /etc/issue
 ##    Welcome to System Test/Diagnostics Tool     ##
 ####################################################
 __EOF
-
-echo "Banner /etc/issue" >> /etc/ssh/sshd_config
 
 if [ -f /etc/selinux/config ]
 then
@@ -231,9 +255,15 @@ do
 done
 
 # Add a root-equivalent user with a restricted shell
-/usr/sbin/useradd -s /bin/bash -c "Fedora Live" -g root -o -u 0 -d /root fedora
+/usr/sbin/useradd -s /bin/rbash.setup -c "Fedora Live" -g root -o -u 0 -d /root fedora
 /usr/bin/passwd -d fedora > /dev/null
+
+#
+# Some SSHD configuration
+#
+echo "Banner /etc/issue" >> /etc/ssh/sshd_config
 echo "PermitEmptyPasswords yes" >> /etc/ssh/sshd_config
+echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
 
 # Fixup autologin to fedora user
 cat /usr/lib/systemd/system/getty@.service | sed 's/noclear %I/noclear -a fedora %I/' > /etc/systemd/system/getty@.service

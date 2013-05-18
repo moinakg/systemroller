@@ -1,0 +1,12 @@
+#!/bin/bash
+
+args="$@"
+grep -- '-q' "$args" > /dev/null
+
+if [ $? -eq 0 ]
+then
+        /bin/rpm "$@"
+else
+        echo "Disallowed"
+fi
+
