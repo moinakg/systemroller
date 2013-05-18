@@ -21,7 +21,7 @@ rootpw --iscrypted $6$cQUoSQBm$nC5VeDt0d8JxFZsMU/sHNBIZYBmBRam8qQaatum8f5m/8k0K5
 # The root passwd below is something random. Generate one or
 # use the one below to prevent root access to the live environment.
 #
-#rootpw --iscrypted $6$8oCSN7US$JpGCyd.WfUzoduVmWK0iOeA6plX8kFIwG0dJWKaAfCwttbqiDab9pWsrsuLlvxgPcO9bbaly7Yscq6MxyExXf.
+#rootpw --iscrypted $6$8oCSN7US$JpGCyd.WfUzo.uVmWK0iOeL6plX8kFIwG0dJWFaAfCwttbqiDab9pWsrsuLlvxgPcO9bbaly7Yscq6MxyExXf.
 authconfig --enableshadow --passalgo=sha512 --enablefingerprint
 
 #repo --name=rawhide --mirrorlist=http://mirrors.fedoraproject.org/mirrorlist?repo=rawhide&arch=$basearch
@@ -71,6 +71,9 @@ net-tools
 
 %post --nochroot
 /bin/sed -i -e 's/ rhgb/ selinux=0 processor.max_cstate=1 nomodeset elevator=noop/g' -e 's/ quiet//g' -e 's/timeout 100/timeout 1/' $LIVE_ROOT/isolinux/isolinux.cfg
+
+cp scripts/dhclient-up-hooks ${INSTALL_ROOT}/etc/dhcp
+chmod +x ${INSTALL_ROOT}/etc/dhcp/dhclient-up-hooks
 
 # only works on x86, x86_64
 if [ "$(uname -i)" = "i386" -o "$(uname -i)" = "x86_64" ]; then
@@ -202,18 +205,14 @@ alsa-utils
 alsa-firmware
 alsa-tools-firmware
 alsa-lib
-NetworkManager
 cups
 cups-libs
 anaconda
 anaconda-yum-plugins
 ppp
-_tcp_wrappers
-_tcp_wrappers-libs
 man-db
 js
 freetype
-NetworkManager-glib
 groff-base
 perl-Pod-Perldoc
 cracklib
@@ -240,7 +239,11 @@ echo "PermitEmptyPasswords yes" >> /etc/ssh/sshd_config
 cat /usr/lib/systemd/system/getty@.service | sed 's/noclear %I/noclear -a fedora %I/' > /etc/systemd/system/getty@.service
 cp /etc/systemd/system/getty@.service /usr/lib/systemd/system/getty@.service
 
+###############################################################################
+# Add live image Init script
+#
 # FIXME: it'd be better to get this installed from a package
+#
 cat > /etc/rc.d/init.d/livesys << EOF
 #!/bin/bash
 #
@@ -422,9 +425,6 @@ for o in \`cat /proc/cmdline\` ; do
     esac
 done
 
-FOE
-fi
-
 touch /.liveimg-late-configured
 
 EOF
@@ -436,6 +436,53 @@ chmod 755 /etc/rc.d/init.d/livesys
 chmod 755 /etc/rc.d/init.d/livesys-late
 /sbin/restorecon /etc/rc.d/init.d/livesys-late
 /sbin/chkconfig --add livesys-late
+###############################################################################
+
+###############################################################################
+# Add interface detection script
+#
+cat > /etc/rc.d/init.d/probe_interfaces << EOF
+#!/bin/bash
+#
+# description: Probe network interfaces, detect link and add ifcfg entries for up adapters
+#
+
+mkdir -p /var/tmp/probe_interfaces
+
+echo "Probing interfaces "
+case "\$1" in
+ start) for iface in \`/sbin/ip -o link show | egrep -v 'lo[0-9]*:' | cut -d: -f2\`
+        do
+            echo "DEVICE=\$iface" > /etc/sysconfig/network-scripts/ifcfg-\$iface
+            echo "BOOTPROTO=dhcp" >> /etc/sysconfig/network-scripts/ifcfg-\$iface
+            echo "ONBOOT=yes" >> /etc/sysconfig/network-scripts/ifcfg-\$iface
+        done
+        ;;
+     *) echo
+        ;;
+esac
+
+EOF
+
+cat > /lib/systemd/system/probe_interfaces.service <<EOF
+[Unit]
+Description=Probe interfaces
+Before=NetworkManager.service
+
+[Service]
+Type=forking
+ExecStart=/etc/rc.d/init.d/probe_interfaces start
+TimeoutSec=0
+RemainAfterExit=yes
+
+[Install]
+WantedBy=NetworkManager.service
+
+EOF
+
+chmod a+x /etc/rc.d/init.d/probe_interfaces
+systemctl enable probe_interfaces.service
+###############################################################################
 
 # enable tmpfs for /tmp
 systemctl enable tmp.mount

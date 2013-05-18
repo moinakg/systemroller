@@ -1,0 +1,202 @@
+#
+# Script to take out >1 interfaces on the same subnet and try to retain the one
+# associated with a hostname, if any.
+# This is loaded by dhclient-up-hooks.
+#
+
+#
+# Simple locking and queuing mechanism. This is needed since this script can be
+# executed concurrently by concurrent execution of dhclient-up-hooks triggers.
+#
+
+mypid=$$
+touch /var/tmp/probe_interfaces/${mypid}
+pid=`ls -tr /var/tmp/probe_interfaces | tail -n 1`
+while [ $pid -ne $mypid ]
+do
+	sleep 1
+	pid=`ls -tr /var/tmp/probe_interfaces | tail -n 1`
+done
+
+_OIFS=$IFS
+IFS="
+"
+
+#
+# Make a list of interfaces that are currently up. The list includes their subnet
+# mask and the broadcast addr.
+#
+cnt=0
+rm -f /var/tmp/probe_interfaces/ifaces_up
+touch /var/tmp/probe_interfaces/ifaces_up
+for ifent in `/sbin/ip -o addr show up | grep -w inet | egrep -v ':[ ]+lo'`
+do
+	IFS=$_OIFS
+	set -- $ifent
+	if="$2"
+	INET=0
+	BRD=0
+	for item in $ifent
+	do
+		if [ $INET -eq 1 ]
+		then
+			IFS="/"
+			set -- $item
+			IFS=$_OIFS
+			ipaddr="$1"
+			smask="$2"
+			INET=0
+		fi
+		if [ $BRD -eq 1 ]
+		then
+			bcast=$item
+			BRD=0
+		fi
+		[ "$item" = "inet" ] && INET=1
+		[ "$item" = "brd" ] && BRD=1
+	done
+	IFS="
+"
+	echo "${smask},${bcast},${if},${ipaddr}" >> /var/tmp/probe_interfaces/ifaces_up
+	cnt=$((cnt + 1))
+done
+
+# At least 2 interfaces should be up to check for duplicates
+if [ $cnt -gt 1 ]
+then
+
+#
+# Check for 2 or more interfaces on the same subnet. Their subnet mask and broadcast
+# addresses should match. In such a case keep the first interface on the subnet up
+# and bring down the rest.
+#
+# There is a proirity here:
+# 1) Keep proper hostname-bound if up
+# 2) Keep a temp hostname-bound if up. At present this only handles null-blah
+#    QIP style hostname.
+# 3) Keep the first detected interface up.
+#
+
+# Prepare a list sorted by subnet mask, bcast addr, interface name
+cat /var/tmp/probe_interfaces/ifaces_up | sort -t, > /var/tmp/probe_interfaces/ifaces_up.sorted
+while [ `wc -l /var/tmp/probe_interfaces/ifaces_up.sorted | cut -d" " -f1` -gt 0 ]
+do
+	# Get the first if entry in the current sorted list
+	ent=`head -n 1 /var/tmp/probe_interfaces/ifaces_up.sorted`
+	IFS=","
+	set -- $ent
+	IFS=$_OIFS
+
+	# Combination of subnet mask, bcast addr to be matched
+	addr="${1},${2}"
+	if=$3
+	ipaddr=$4
+	DUP=0
+	nullif=""
+
+	hname=""
+	# Do a reverse lookup to see if this IP has a hostname bound to it
+	hname=`nslookup ${ipaddr} | awk '/name =/ {
+		pos = index($0, "name =");
+		if (pos > 0) {
+			nm = substr($0, pos + 6);
+			gsub(/\.$/, "", nm);
+			gsub(/ /, "", nm);
+			if (index(nm, "null-") == 0) { print nm; } else { print "null"; }
+		}
+	}'`
+	if [ "$hname" = "null" ]
+	then
+		hname=""
+		nullif=$if
+	fi
+
+	# Create another list excluding the first if entry.
+	# Akin to popping an element off a FIFO queue.
+	#
+	tail -n +2 /var/tmp/probe_interfaces/ifaces_up.sorted > /var/tmp/probe_interfaces/ifaces_up.t
+	rm -f /var/tmp/probe_interfaces/ifaces_up.t1
+	touch /var/tmp/probe_interfaces/ifaces_up.t1
+
+	# Search in the remaining entries for a duplicate
+	for item in `cat /var/tmp/probe_interfaces/ifaces_up.t`
+	do
+		IFS=","
+		set -- $item
+		IFS=$_OIFS
+		caddr="${1},${2}"
+		cif=$3
+		cipaddr=$4
+
+		# If duplicate found, bring down the if else push the entry into a 3rd list.
+		if [ "$caddr" = "$addr" ]
+		then
+			DUP=1
+			if [ "x${hname}" = "x" ]
+			then
+				#
+				# If we do not already have a hostname mapped to the last if/ip
+				# check if this if/ip provides one. If yes then make this the
+				# preferred if/ip for this subnet.
+				#
+				hname=`nslookup ${cipaddr} | awk '/name =/ {
+				pos = index($0, "name =");
+				if (pos > 0) {
+					nm = substr($0, pos + 6);
+					gsub(/\.$/, "", nm);
+					gsub(/ /, "", nm);
+					if (index(nm, "null-") == 0) { print nm; } else { print "null"; }
+				}
+				}'`
+				if [ "x${hname}" = "x" ]
+				then
+					if [ "$hname" != "null" ]
+					then
+						_if=$if
+						if=$cif
+						ipaddr=$cipaddr
+						cif=$_if
+
+					elif [ "x${nullif}" = "x" ]
+					then
+						nullif=$cif
+						nullip=$cipaddr
+					fi
+				fi
+			fi
+
+			/sbin/ifdown $cif
+		else
+			echo "$item" >> /var/tmp/probe_interfaces/ifaces_up.t1
+		fi
+	done
+
+	# Make the 3rd list of ifaces to be processed as the current sorted list.
+	cp /var/tmp/probe_interfaces/ifaces_up.t1 /var/tmp/probe_interfaces/ifaces_up.sorted
+
+	if [ $DUP -eq 1 ]
+	then
+		#
+		# If duplicates were found for the first if entry then that entry has
+		# to be flapped to ensure that it gets properly identified as primary
+		# and gets the correct gateway.
+		#
+		/sbin/ifdown $if
+		if [ "x${nullif}" != "x" ]
+		then
+			/sbin/ifup ${nullif}
+		else
+			/sbin/ifup ${if}
+		fi
+	fi
+done
+
+fi
+
+#
+# Reset and remove self from the queue so that the next guy gets the chance to
+# run.
+#
+IFS=$_OIFS
+rm /var/tmp/probe_interfaces/${mypid}
+
