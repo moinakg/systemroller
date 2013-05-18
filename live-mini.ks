@@ -8,7 +8,7 @@ timezone US/Eastern
 auth --useshadow --enablemd5
 selinux --permissive
 firewall --disabled
-part / --size 2000 --fstype ext4
+part / --size 1400 --fstype ext4
 services --enabled=sshd,network
 
 #
@@ -65,6 +65,7 @@ iproute
 bind-utils
 bc
 curl
+net-tools
 
 %end
 
@@ -448,6 +449,8 @@ rm -f /var/lib/rpm/__db*
 # save a little bit of space at least...
 rm -f /boot/initrd*
 rm -f /boot/initramfs*
+rm -f /boot/vmlinuz*
+
 # make sure there aren't core files lying around
 rm -f /core*
 
@@ -525,6 +528,7 @@ rm -rf lib/modules/3.*/kernel/drivers/imput/misc/keyspan_remote*
 rm -f /lib/firmware/mts_*
 rm -rf /lib/firmware/sb16 /lib/firmware/matrox
 rm -rf /lib/firmware/emi62 /lib/firmware/emi26
+rm -rf /lib/firmware/keyspan
 rm -rf /lib/firmware/keyspan_pda
 
 # Remove other miscellaneous files from the world
@@ -644,9 +648,14 @@ rm -rf /usr/share/terminfo/g/gnome* /usr/share/terminfo/m/mach*
 rm -rf /usr/share/terminfo/h/hurd* /usr/share/terminfo/k/konsole*
 rm -rf /usr/share/terminfo/E/Eterm* /usr/share/systemtap
 rm -rf /usr/share/perl5/Pod /usr/share/dracut
+rm -rf /usr/share/mime/application/*
+rm -rf /usr/share/mime/video/* /usr/share/mime/x-content/*
 
 # Do not bother with timezone
 rm -rf /usr/share/zoneinfo
+
+# Nuke package metadata. Not really needed.
+rm -f /var/lib/rpm/Packages
 
 # Nuke python bytecodes. Performance does not matter here.
 find /usr/lib64/python* -name "*.pyc" | xargs rm -f

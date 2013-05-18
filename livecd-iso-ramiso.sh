@@ -103,9 +103,10 @@ mv ${ISOWORK}/iso-stage/initrd0.img ${ISOWORK}/iso-stage/isolinux
 
 # Fixup files in EFI directory
 (cd ${ISOWORK}/iso-stage/isolinux/
+rm -f ${ISOWORK}/iso-stage/isolinux/macboot.img
 for f in *
 do
-	if [ ! -e ${ISOWORK}/iso-stage/isolinux/${f} ]
+	if [ ! -e ${ISOWORK}/iso-stage/EFI/boot/${f} ]
 	then
 		ln ${ISOWORK}/iso-stage/EFI/boot/${f} ${ISOWORK}/iso-stage/isolinux/${f}
 	fi
@@ -114,16 +115,8 @@ done)
 cat ${ISOWORK}/iso-stage/EFI/BOOT/grub.cfg | sed -e "s#LABEL=[^ ]*#$ISOBASENAME#" -e "s/rd.live.image/rootflags=loop rd.live.image/" > ${ISOWORK}/iso-stage/EFI/BOOT/grub.cfg.new
 mv ${ISOWORK}/iso-stage/EFI/BOOT/grub.cfg.new ${ISOWORK}/iso-stage/EFI/BOOT/grub.cfg
 
-#APPEND=$(grep -m1 linuxefi ${ISOWORK}/iso-stage/EFI/BOOT/grub.cfg | sed -e "s#LABEL=[^ ]*#$ISOBASENAME#" -e "s/rd.live.image/rd.live.ram/")
-#APPEND="append rootflags=loop $APPEND"
-#cat $CDMNT/EFI/boot/boot*.conf | sed "s#append .*#${APPEND}#" > ${ISOWORK}/iso-stage/EFI/boot/boot*.conf
-#ln ${ISOWORK}/iso-stage/EFI/boot/boot*.conf ${ISOWORK}/iso-stage/EFI/boot/grub.conf
-
 # Get boot append line from original cd image
 if [ -f $CDMNT/isolinux/isolinux.cfg ]; then
-	#APPEND=$(grep -m1 append $CDMNT/isolinux/isolinux.cfg | sed -e "s#CDLABEL=[^ ]*#/$ISOBASENAME#" -e "s/ *append *//")
-	#APPEND="append rootflags=loop $APPEND"
-	#cat $CDMNT/isolinux/isolinux.cfg | sed "s#append .*#${APPEND}#" > ${ISOWORK}/iso-stage/isolinux/isolinux.cfg
 	cat $CDMNT/isolinux/isolinux.cfg | sed -e "s#CDLABEL=[^ ]*#/$ISOBASENAME#" -e "s/rd.live.image/rootflags=loop rd.live.image/" > ${ISOWORK}/iso-stage/isolinux/isolinux.cfg
 fi
 
