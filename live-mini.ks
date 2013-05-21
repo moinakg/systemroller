@@ -62,6 +62,7 @@ ipmitool
 smartmontools
 traceroute
 iproute
+iputils
 bind-utils
 bc
 curl
@@ -79,9 +80,17 @@ mkdir ${INSTALL_ROOT}/rbin
 cp scripts/rbash.setup ${INSTALL_ROOT}/bin/rbash.setup
 chmod a+x ${INSTALL_ROOT}/bin/rbash.setup
 
-cat >${INSTALL_ROOT}/rbin/.lessk <<EOF
-M+Gc	v!|evxEnd
+#
+# Setup a lesskey file to block shell escape and vi from less
+#
+cat >${INSTALL_ROOT}/rbin/lk <<EOF
+#command
+|         status
+v         status
+!         status
 EOF
+lesskey -o ${INSTALL_ROOT}/rbin/.lessk ${INSTALL_ROOT}/rbin/lk
+rm ${INSTALL_ROOT}/rbin/lk
 
 for prog in `ls scripts/rbin`
 do
@@ -117,9 +126,9 @@ __EOF
 
 if [ -f /etc/selinux/config ]
 then
-        # Weaken selinux
-        cp /etc/selinux/config /etc/selinux/config.orig
-        cat /etc/selinux/config.org | sed 's/SELINUX=enforcing/SELINUX=permissive/' > /etc/selinux/config
+	# Weaken selinux
+	cp /etc/selinux/config /etc/selinux/config.orig
+	cat /etc/selinux/config.org | sed 's/SELINUX=enforcing/SELINUX=permissive/' > /etc/selinux/config
 fi
 
 # Sysfont setup
@@ -171,7 +180,6 @@ libcgroup
 perl-Pod-Simple
 perl-Pod-Escapes
 fipscheck
-cracklib-dicts
 libdrm
 libpciaccess
 lm_sensors-devel
@@ -239,7 +247,6 @@ js
 freetype
 groff-base
 perl-Pod-Perldoc
-cracklib
 sudo
 info
 _PKGS
@@ -514,8 +521,10 @@ chmod a+x /etc/rc.d/init.d/probe_interfaces
 systemctl enable probe_interfaces.service
 ###############################################################################
 
-# enable tmpfs for /tmp
-systemctl enable tmp.mount
+#
+# Enable Tiny HTTP Service
+#
+systemctl enable thttpd.service
 
 # work around for poor key import UI in PackageKit
 rm -f /var/lib/rpm/__db*
@@ -523,10 +532,15 @@ rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-fedora
 # Note that running rpm recreates the rpm db files which aren't needed or wanted
 rm -f /var/lib/rpm/__db*
 
-# save a little bit of space at least...
+#
+# Remove critical boot files since this image is not meant to be
+# installable.
+#
 rm -f /boot/initrd*
 rm -f /boot/initramfs*
 rm -f /boot/vmlinuz*
+rm -rf /boot/efi /boot/grub2
+rm -rf /usr/lib/grub
 
 # make sure there aren't core files lying around
 rm -f /core*
@@ -602,11 +616,11 @@ rm -rf lib/modules/3.*/kernel/drivers/usb/serial/omninet*
 rm -rf lib/modules/3.*/kernel/drivers/input/mouse/appletouch*
 rm -rf lib/modules/3.*/kernel/drivers/imput/misc/keyspan_remote*
 
-rm -f /lib/firmware/mts_*
+rm -f /lib/firmware/mts_* /lib/firmware/av7110
 rm -rf /lib/firmware/sb16 /lib/firmware/matrox
 rm -rf /lib/firmware/emi62 /lib/firmware/emi26
-rm -rf /lib/firmware/keyspan
-rm -rf /lib/firmware/keyspan_pda
+rm -rf /lib/firmware/keyspan /lib/firmware/keyspan_pda
+rm -rf /lib/firmware/vicam /lib/firmware/v4l* /lib/firmware/dvb-*
 
 # Remove other miscellaneous files from the world
 rm -f /usr/sbin/visudo /usr/sbin/update-pciids
@@ -643,6 +657,7 @@ rm -f /usr/sbin/arpd /usr/sbin/groupmems
 rm -f /usr/sbin/pwconv /usr/bin/pcregrep /usr/bin/isohybrid
 rm -f /usr/sbin/pwunconv /usr/sbin/grpconv
 rm -f /usr/sbin/grpunconv /usr/sbin/libcc_post_upgrade
+rm -f /usr/sbin/grub2* /usr/bin/grub2*
 rm -f /usr/bin/bzip2recover /usr/bin/gzexe
 rm -f /usr/bin/cal /usr/bin/pstree.x11
 rm -f /usr/bin/scriptreplay /usr/bin/mcookie
@@ -654,7 +669,7 @@ rm -f /usr/bin/lss16toppm /usr/bin/infotocap
 rm -f /usr/bin/objcopy /usr/bin/c++filt
 rm -f /usr/bin/elfedit /usr/bin/gprof
 rm -f /usr/bin/as /usr/bin/ranlib
-rm -rf /usr/lib/anaconda-runtime /usr/lib/ConsoleKit
+rm -rf /usr/lib/anaconda-runtime /usr/lib/ConsoleKit /usr/lib/dracut
 rm -rf /usr/lib64/gconv /usr/lib64/nss/unsupported-tools
 rm -rf /usr/lib64/python2.6/lib2to3 /usr/lib64/python2.6/idlelib
 rm -f /usr/lib64/libgmpxx* /usr/libexec/perf* /usr/lib64/libusbpp*
@@ -710,7 +725,7 @@ rm -rf /usr/share/doc /usr/share/dict
 rm -rf /usr/share/firstboot /usr/share/sounds
 rm -rf /usr/share/emacs /usr/share/games
 rm -rf /usr/share/man /usr/share/idl /usr/local/share/man
-rm -rf /usr/share/omf
+rm -rf /usr/share/omf /usr/share/aclocal
 rm -rf /usr/share/pixmaps /usr/share/xsessions
 rm -rf /usr/share/i18n/charmaps/EBCDIC*
 rm -rf /usr/share/i18n/charmaps/IBM*
@@ -719,14 +734,14 @@ rm -rf /usr/share/syslinux/com32 /usr/share/syslinux/sanboot.c32
 rm -rf /usr/share/syslinux/hdt.c32 /usr/share/syslinux/gfxboot*
 rm -rf /usr/share/perl5/pod /usr/share/info
 rm -rf /usr/share/perl5/desktop-directories
-rm -rf /usr/share/gnupg /usr/share/augeas
+rm -rf /usr/share/gnupg /usr/share/augeas /usr/share/fedora-logos
 rm -rf /usr/share/grub /usr/share/terminfo/A/Apple_Terminal # Glad to remove this
 rm -rf /usr/share/terminfo/g/gnome* /usr/share/terminfo/m/mach*
 rm -rf /usr/share/terminfo/h/hurd* /usr/share/terminfo/k/konsole*
 rm -rf /usr/share/terminfo/E/Eterm* /usr/share/systemtap
-rm -rf /usr/share/perl5/Pod /usr/share/dracut
-rm -rf /usr/share/mime/application/*
-rm -rf /usr/share/mime/video/* /usr/share/mime/x-content/*
+rm -rf /usr/share/perl5/Pod /usr/share/dracut /usr/share/shim
+rm -rf /usr/share/mime/application/* /usr/share/mime/packages/* /usr/share/mime/audio/*
+rm -rf /usr/share/mime/video/* /usr/share/mime/x-content/* /usr/share/mime/image/*
 
 # Do not bother with timezone
 rm -rf /usr/share/zoneinfo
@@ -739,6 +754,8 @@ find /usr/lib64/python* -name "*.pyc" | xargs rm -f
 find /usr/lib64/python* -name "*.pyo" | xargs rm -f
 find /usr/lib/python* -name "*.pyc" | xargs rm -f
 find /usr/lib/python* -name "*.pyo" | xargs rm -f
+
+find /usr/lib64/perl5 -name "*.pod" | xargs rm -f
 
 # Re-run depmod since some kernel modules were removed
 echo "Running depmod after cleanup ..."
