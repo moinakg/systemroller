@@ -49,7 +49,6 @@ openssh-server
 rpm
 policycoreutils
 shim
-shim-unsigned
 grub2-efi
 dhclient
 dmidecode
@@ -128,7 +127,7 @@ if [ -f /etc/selinux/config ]
 then
 	# Weaken selinux
 	cp /etc/selinux/config /etc/selinux/config.orig
-	cat /etc/selinux/config.org | sed 's/SELINUX=enforcing/SELINUX=permissive/' > /etc/selinux/config
+	cat /etc/selinux/config.orig | sed 's/SELINUX=enforcing/SELINUX=permissive/' > /etc/selinux/config
 fi
 
 # Sysfont setup
@@ -616,7 +615,7 @@ rm -rf lib/modules/3.*/kernel/drivers/usb/serial/omninet*
 rm -rf lib/modules/3.*/kernel/drivers/input/mouse/appletouch*
 rm -rf lib/modules/3.*/kernel/drivers/imput/misc/keyspan_remote*
 
-rm -f /lib/firmware/mts_* /lib/firmware/av7110
+rm -rf /lib/firmware/mts_* /lib/firmware/av7110
 rm -rf /lib/firmware/sb16 /lib/firmware/matrox
 rm -rf /lib/firmware/emi62 /lib/firmware/emi26
 rm -rf /lib/firmware/keyspan /lib/firmware/keyspan_pda
